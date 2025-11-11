@@ -6,8 +6,8 @@ namespace Clinic.Api.Data;
 public class ClinicDbContext(DbContextOptions<ClinicDbContext> options) : DbContext(options)
 {
     public DbSet<Patient> Patients => Set<Patient>();
-    public DbSet<Appointment> Appointments => Set<Appointment>(); // ✅
-    public DbSet<Staff> Staff => Set<Staff>();                    // ✅ AJOUT
+    public DbSet<Appointment> Appointments => Set<Appointment>();
+    public DbSet<Staff> Staff => Set<Staff>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,16 +25,23 @@ public class ClinicDbContext(DbContextOptions<ClinicDbContext> options) : DbCont
         // Appointment
         modelBuilder.Entity<Appointment>(e =>
         {
+            // FK → Patient (obligatoire)
             e.HasOne(a => a.Patient)
              .WithMany(p => p.Appointments)
              .HasForeignKey(a => a.PatientId)
              .OnDelete(DeleteBehavior.Cascade);
 
+            // FK → Staff (FACULTATIF) + ON DELETE SET NULL
+            e.HasOne(a => a.Staff)
+             .WithMany() // ou .WithMany(s => s.Appointments) si tu as la nav inverse dans Staff
+             .HasForeignKey(a => a.StaffId)
+             .OnDelete(DeleteBehavior.SetNull);
+
             e.Property(a => a.Date).IsRequired();
             e.Property(a => a.Reason).HasMaxLength(255);
         });
 
-        // Staff  ✅
+        // Staff
         modelBuilder.Entity<Staff>(e =>
         {
             e.ToTable("Staff");
