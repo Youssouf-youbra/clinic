@@ -1,50 +1,160 @@
+using System.Text;
 using Clinic.Api.Data;
-using Microsoft.EntityFrameworkCore;
+using Clinic.Api.Models;
 using FluentValidation;
 using FluentValidation.AspNetCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1) DB: PostgreSQL via connection string "Default"
+// ======================================================
+// 1) DATABASE (PostgreSQL)
+// ======================================================
 builder.Services.AddDbContext<ClinicDbContext>(opt =>
-    opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+    opt.UseNpgsql(builder.Configuration.GetConnectionString("Default"))
+);
 
-// 2) API + Swagger
+// ======================================================
+// 2) IDENTITY (Users + Roles)
+// ======================================================
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+{
+    options.Password.RequireDigit = true;
+    options.Password.RequireLowercase = true;
+    options.Password.RequireUppercase = false;
+    options.Password.RequireNonAlphanumeric = false;
+    options.Password.RequiredLength = 6;
+})
+.AddEntityFrameworkStores<ClinicDbContext>()
+.AddDefaultTokenProviders();
+
+// ======================================================
+// 3) JWT AUTHENTICATION
+// ======================================================
+var jwtSection = builder.Configuration.GetSection("Jwt");
+var jwtKey = jwtSection["Key"] ?? throw new InvalidOperationException("Jwt:Key not configured");
+var jwtIssuer = jwtSection["Issuer"] ?? "ClinicApi";
+var jwtAudience = jwtSection["Audience"] ?? jwtIssuer;
+
+builder.Services
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.RequireHttpsMetadata = false; // true en prod
+        options.SaveToken = true;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtKey)
+            ),
+
+            ClockSkew = TimeSpan.FromMinutes(1)
+        };
+    });
+
+builder.Services.AddAuthorization();
+
+// ======================================================
+// 4) CONTROLLERS + VALIDATION
+// ======================================================
 builder.Services.AddControllers();
-
-// 2.1) FluentValidation
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 
+// ======================================================
+// 5) SWAGGER + JWT (FIX 401)
+// ======================================================
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Clinic.Api",
+        Version = "v1"
+    });
 
-// 3) CORS pour le front React (port Vite par défaut)
+    // 🔐 Définition Bearer
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Entrez : Bearer {votre_token_jwt}"
+    });
+
+    // 🔐 Application globale du Bearer (OBLIGATOIRE)
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
+// ======================================================
+// 6) CORS
+// ======================================================
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
-    p.WithOrigins("http://localhost:5173")
+    p.WithOrigins("http://localhost:5173", "http://localhost:3000")
      .AllowAnyHeader()
      .AllowAnyMethod()
+     .AllowCredentials()
 ));
 
+// ======================================================
+// BUILD APP
+// ======================================================
 var app = builder.Build();
 
-// 4) Migration auto (dev seulement)
+// ======================================================
+// 7) MIGRATIONS + SEED (DEV)
+// ======================================================
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<ClinicDbContext>();
+    var services = scope.ServiceProvider;
+
+    var db = services.GetRequiredService<ClinicDbContext>();
     db.Database.Migrate();
+
+    await IdentitySeed.SeedAsync(services);
 }
 
-// 5) Middlewares
+// ======================================================
+// 8) MIDDLEWARES
+// ======================================================
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// ⚠️ Désactivé car tu n’as pas de port HTTPS configuré
-// app.UseHttpsRedirection();
-
 app.UseCors();
+
+app.UseAuthentication();   // 👈 OBLIGATOIRE AVANT
 app.UseAuthorization();
 
 app.MapControllers();
-
 app.Run();

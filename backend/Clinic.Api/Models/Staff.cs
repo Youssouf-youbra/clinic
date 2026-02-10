@@ -18,4 +18,9 @@ public class Staff
 
     [Required, EmailAddress, MaxLength(120)]
     public string Email { get; set; } = "";
+
+    // …
+public ICollection<MedicalNote> MedicalNotes { get; set; } = new List<MedicalNote>();
+// …
+
 }

@@ -1,42 +1,101 @@
+/* RESET DE BASE */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f3f4f6; /* fond gris clair */
+  color: #111827;
+}
+
+/* ROOT : on enlève le centrage forcé */
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* CARTE PRINCIPALE POUR CHAQUE PAGE */
+.page-card {
+  background: white;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+  margin: 24px auto;
+  max-width: 1200px;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+/* TITRES */
+.page-card h2 {
+  margin-top: 0;
+  margin-bottom: 16px;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+/* TABLES */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
 }
 
-.card {
-  padding: 2em;
+th {
+  background: #f9fafb;
+  border-bottom: 2px solid #e5e7eb;
+  padding: 10px;
+  text-align: left;
+  font-weight: 600;
 }
 
-.read-the-docs {
-  color: #888;
+td {
+  padding: 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* BOUTONS */
+button {
+  border-radius: 6px;
+  padding: 6px 12px;
+  border: none;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+/* INPUTS */
+input {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+}
+
+/* NAVBAR */
+header {
+  background: white;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+header a {
+  text-decoration: none;
+  color: #111827;
+  font-weight: 500;
+}
+
+header a.active {
+  color: #2563eb;
+}
+body {
+  background-image: none !important;
+  background: #f3f4f6 !important;
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
 import {
   getPatients,
   createPatient,
@@ -8,18 +9,26 @@ import {
   type Patient,
 } from "../api/clients";
 import PatientForm from "../components/PatientForm";
+import { useAuth } from "../context/AuthContext";
 
 export default function PatientsPage() {
-  // recherche + pagination
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const role = String(user?.role ?? "").toUpperCase(); // ADMIN / DOCTOR / STAFF / PATIENT
+
+  const canCreate = ["ADMIN", "DOCTOR", "STAFF"].includes(role);
+  const canEdit = ["ADMIN", "DOCTOR", "STAFF"].includes(role);
+  const canDelete = role === "ADMIN";
+  const canOpenRecord = ["ADMIN", "DOCTOR"].includes(role);
+
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
-  // données
   const [total, setTotal] = useState(0);
   const [items, setItems] = useState<Patient[]>([]);
 
-  // UI
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -27,7 +36,6 @@ export default function PatientsPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  // charger la liste
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -35,7 +43,7 @@ export default function PatientsPage() {
     const t = setTimeout(() => {
       getPatients({ query, page, pageSize })
         .then((d) => {
-          setTotal(d?.total ?? (Array.isArray(d?.items) ? d.items.length : 0));
+          setTotal(d?.total ?? 0);
           setItems(Array.isArray(d?.items) ? d.items : []);
         })
         .catch(() => setError("Impossible de charger les patients."))
@@ -43,50 +51,78 @@ export default function PatientsPage() {
     }, 300);
 
     return () => clearTimeout(t);
-  }, [query, page, pageSize]);
+  }, [query, page]);
 
-  // parse erreurs de validation API
-  const parseValidation = (err: any) => {
-    const data = err?.response?.data;
-    if (data?.errors) return Object.values<string[]>(data.errors).flat().join(" | ");
-    return data?.title || "Une erreur est survenue.";
+  const handleExportCsv = async () => {
+    const token = localStorage.getItem("authToken");
+    if (!token) {
+      toast.error("Vous n’êtes pas connecté.");
+      return;
+    }
+
+    try {
+      const res = await fetch("http://localhost:5219/api/Exports/patients.csv", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) throw new Error();
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "patients.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+      toast.success("CSV exporté avec succès 📄");
+    } catch {
+      toast.error("Échec de l’export CSV.");
+    }
   };
 
-  // créer
+  const handleOpenMedicalRecords = (patientId: number) => {
+    if (!canOpenRecord) {
+      toast.error("Accès refusé (réservé Admin / Doctor).");
+      return;
+    }
+    navigate(`/medical-records?patientId=${patientId}`);
+  };
+
   const handleCreate = async (data: Omit<Patient, "id">) => {
     try {
       await createPatient(data);
       toast.success("Patient ajouté ✅");
       setCreating(false);
-      setPage(1); // revenir page 1
-      // refetch
-      setLoading(true);
-      const d = await getPatients({ query, page: 1, pageSize });
-      setTotal(d?.total ?? 0);
-      setItems(d?.items ?? []);
-    } catch (e: any) {
-      toast.error(parseValidation(e));
-    } finally {
-      setLoading(false);
+      setPage(1);
+    } catch {
+      toast.error("Erreur lors de l’ajout.");
     }
   };
 
-  // mettre à jour
   const handleUpdate = async (id: number, data: Omit<Patient, "id">) => {
     try {
       await updatePatient(id, data);
       toast.success("Patient modifié ✅");
       setEditing(null);
-      // update optimiste
-      setItems((prev) => prev.map((p) => (p.id === id ? { id, ...data } as Patient : p)));
-    } catch (e: any) {
-      toast.error(parseValidation(e));
+      setItems((prev) =>
+        prev.map((p) => (p.id === id ? ({ id, ...data } as Patient) : p))
+      );
+    } catch {
+      toast.error("Erreur lors de la modification.");
     }
   };
 
-  // supprimer
   const handleDelete = async (id: number) => {
+    if (!canDelete) {
+      toast.error("Suppression réservée à l’Admin.");
+      return;
+    }
     if (!confirm("Supprimer ce patient ?")) return;
+
     try {
       await deletePatient(id);
       toast.success("Patient supprimé 🗑️");
@@ -98,34 +134,46 @@ export default function PatientsPage() {
   };
 
   return (
-    <div style={{ padding: 16, maxWidth: 900, margin: "0 auto" }}>
-      <h2 style={{ marginBottom: 12 }}>Patients</h2>
+    <div className="page-wrapper">
+      <h2 className="text-xl font-semibold mb-4">Patients</h2>
 
-      {/* barre d’actions */}
       {!creating && !editing && (
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <div className="flex gap-3 mb-4 items-center">
           <input
+            className="px-3 py-2 border rounded w-80"
             placeholder="Rechercher (nom, email, téléphone)"
             value={query}
             onChange={(e) => {
               setPage(1);
               setQuery(e.target.value);
             }}
-            style={{ padding: 8, width: 360 }}
           />
-          <button onClick={() => setCreating(true)}>+ Nouveau</button>
+
+          {canCreate && (
+            <button
+              className="px-3 py-2 rounded bg-blue-600 text-white"
+              onClick={() => setCreating(true)}
+            >
+              + Nouveau
+            </button>
+          )}
+
+          <button
+            className="px-3 py-2 rounded bg-emerald-600 text-white"
+            onClick={handleExportCsv}
+          >
+            Exporter CSV
+          </button>
         </div>
       )}
 
       {loading && <div>Chargement…</div>}
-      {error && <div style={{ color: "crimson" }}>{error}</div>}
+      {error && <div className="text-red-600">{error}</div>}
 
-      {/* formulaire création */}
       {creating && (
         <PatientForm onSubmit={handleCreate} onCancel={() => setCreating(false)} />
       )}
 
-      {/* formulaire édition */}
       {editing && (
         <PatientForm
           initial={editing}
@@ -134,35 +182,61 @@ export default function PatientsPage() {
         />
       )}
 
-      {/* tableau + actions */}
       {!creating && !editing && (
         <>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <table>
             <thead>
               <tr>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Prénom</th>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Nom</th>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Email</th>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Téléphone</th>
-                <th style={{ textAlign: "left", borderBottom: "1px solid #ddd", padding: 8 }}>Actions</th>
+                <th>Prénom</th>
+                <th>Nom</th>
+                <th>Email</th>
+                <th>Téléphone</th>
+                <th>Actions</th>
               </tr>
             </thead>
+
             <tbody>
               {items.map((p) => (
                 <tr key={p.id}>
-                  <td style={{ padding: 8, borderBottom: "1px solid #f2f2f2" }}>{p.firstName}</td>
-                  <td style={{ padding: 8, borderBottom: "1px solid #f2f2f2" }}>{p.lastName}</td>
-                  <td style={{ padding: 8, borderBottom: "1px solid #f2f2f2" }}>{p.email}</td>
-                  <td style={{ padding: 8, borderBottom: "1px solid #f2f2f2" }}>{p.phone}</td>
-                  <td style={{ padding: 8, borderBottom: "1px solid #f2f2f2", display: "flex", gap: 6 }}>
-                    <button onClick={() => setEditing(p)}>Éditer</button>
-                    <button onClick={() => handleDelete(p.id)}>Supprimer</button>
+                  <td>{p.firstName}</td>
+                  <td>{p.lastName}</td>
+                  <td>{p.email}</td>
+                  <td>{p.phone}</td>
+
+                  <td className="flex gap-2">
+                    {canOpenRecord && (
+                      <button
+                        className="px-2 py-1 bg-indigo-600 text-white rounded"
+                        onClick={() => handleOpenMedicalRecords(p.id)}
+                      >
+                        Dossier médical
+                      </button>
+                    )}
+
+                    {canEdit && (
+                      <button
+                        className="px-2 py-1 bg-amber-500 text-white rounded"
+                        onClick={() => setEditing(p)}
+                      >
+                        Éditer
+                      </button>
+                    )}
+
+                    {canDelete && (
+                      <button
+                        className="px-2 py-1 bg-rose-600 text-white rounded"
+                        onClick={() => handleDelete(p.id)}
+                      >
+                        Supprimer
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
+
               {items.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={5} style={{ padding: 12, color: "#666" }}>
+                  <td colSpan={5} className="text-center py-4 text-gray-500">
                     Aucun patient
                   </td>
                 </tr>
@@ -170,15 +244,17 @@ export default function PatientsPage() {
             </tbody>
           </table>
 
-          {/* pagination */}
-          <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8 }}>
+          <div className="flex gap-3 mt-4 items-center">
             <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
               ◀ Précédent
             </button>
             <span>
               page {page} / {totalPages} — {total} résultat(s)
             </span>
-            <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
               Suivant ▶
             </button>
           </div>

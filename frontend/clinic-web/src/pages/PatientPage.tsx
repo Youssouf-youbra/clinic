@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   getPatients,
@@ -21,15 +21,17 @@ export default function PatientsPage() {
 
   // UI
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Patient | null>(null);
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total]);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
+
     const t = setTimeout(() => {
       getPatients({ query, page, pageSize })
         .then((d) => {
@@ -38,7 +40,8 @@ export default function PatientsPage() {
         })
         .catch(() => setError("Impossible de charger les patients."))
         .finally(() => setLoading(false));
-    }, 300);
+    }, 250);
+
     return () => clearTimeout(t);
   }, [query, page, pageSize]);
 
@@ -54,6 +57,7 @@ export default function PatientsPage() {
       toast.success("Patient ajouté ✅");
       setCreating(false);
       setPage(1);
+
       setLoading(true);
       const d = await getPatients({ query, page: 1, pageSize });
       setTotal(d?.total ?? 0);
@@ -70,7 +74,9 @@ export default function PatientsPage() {
       await updatePatient(id, data);
       toast.success("Patient modifié ✅");
       setEditing(null);
-      setItems((prev) => prev.map((p) => (p.id === id ? ({ id, ...data } as Patient) : p)));
+      setItems((prev) =>
+        prev.map((p) => (p.id === id ? ({ id, ...data } as Patient) : p))
+      );
     } catch (e: any) {
       toast.error(parseValidation(e));
     }
@@ -88,15 +94,87 @@ export default function PatientsPage() {
     }
   };
 
+  // ✅ EXPORT CSV
+  const handleExportCsv = async () => {
+    if (exporting) return;
+
+    try {
+      setExporting(true);
+
+      const token =
+        localStorage.getItem("authToken") ||
+        localStorage.getItem("token") ||
+        localStorage.getItem("accessToken") ||
+        localStorage.getItem("jwt");
+
+      if (!token) {
+        toast.error("Pas connecté.");
+        return;
+      }
+
+      const res = await fetch("http://localhost:5219/api/Exports/patients.csv", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        toast.error("Export impossible (autorisation/serveur).");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `patients_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+      a.click();
+
+      window.URL.revokeObjectURL(url);
+      toast.success("Export CSV téléchargé ✅");
+    } catch {
+      toast.error("Erreur lors de l’export.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto p-4">
-      <h2 className="text-xl font-semibold mb-3">Patients</h2>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-xl font-semibold">Patients</h2>
+          <p className="text-sm text-gray-600">
+            {loading ? "Chargement..." : `${total} résultat(s)`}
+          </p>
+        </div>
 
-      {/* Actions bar */}
+        {!creating && !editing && (
+          <div className="flex gap-2">
+            <button
+              className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.99]"
+              onClick={() => setCreating(true)}
+            >
+              ➕ Nouveau
+            </button>
+
+            <button
+              className="px-3 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60 active:scale-[0.99]"
+              onClick={handleExportCsv}
+              disabled={exporting}
+              title="Exporter la liste des patients en CSV"
+            >
+              {exporting ? "⏳ Export..." : "⬇️ Exporter CSV"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Search */}
       {!creating && !editing && (
-        <div className="flex gap-2 mb-3">
+        <div className="mb-3">
           <input
-            className="w-96 px-3 py-2 border rounded outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full md:w-[420px] px-3 py-2 border rounded outline-none focus:ring-2 focus:ring-blue-400"
             placeholder="Rechercher (nom, email, téléphone)"
             value={query}
             onChange={(e) => {
@@ -104,28 +182,34 @@ export default function PatientsPage() {
               setQuery(e.target.value);
             }}
           />
-          <button
-            className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
-            onClick={() => setCreating(true)}
-          >
-            + Nouveau
-          </button>
         </div>
       )}
 
-      {loading && <div className="text-gray-600">Chargement…</div>}
-      {error && <div className="text-rose-600">{error}</div>}
+      {/* States */}
+      {error && <div className="text-rose-600 mb-2">{error}</div>}
+      {loading && <div className="text-gray-600 mb-2">Chargement…</div>}
 
-      {/* Formulaire création */}
+      {/* Forms */}
       {creating && (
-        <div className="mb-4">
+        <div className="mb-4 border rounded p-3 bg-gray-50">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold">Ajouter un patient</h3>
+            <button className="text-gray-600 hover:underline" onClick={() => setCreating(false)}>
+              Fermer
+            </button>
+          </div>
           <PatientForm onSubmit={handleCreate} onCancel={() => setCreating(false)} />
         </div>
       )}
 
-      {/* Formulaire édition */}
       {editing && (
-        <div className="mb-4">
+        <div className="mb-4 border rounded p-3 bg-gray-50">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold">Modifier le patient</h3>
+            <button className="text-gray-600 hover:underline" onClick={() => setEditing(null)}>
+              Fermer
+            </button>
+          </div>
           <PatientForm
             initial={editing}
             onSubmit={(vals) => handleUpdate(editing.id, vals)}
@@ -134,53 +218,57 @@ export default function PatientsPage() {
         </div>
       )}
 
+      {/* Table */}
       {!creating && !editing && (
         <>
-          <table className="w-full border-collapse">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left border-b p-2">Prénom</th>
-                <th className="text-left border-b p-2">Nom</th>
-                <th className="text-left border-b p-2">Email</th>
-                <th className="text-left border-b p-2">Téléphone</th>
-                <th className="text-left border-b p-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((p) => (
-                <tr key={p.id} className="odd:bg-white even:bg-gray-50">
-                  <td className="border-b p-2">{p.firstName}</td>
-                  <td className="border-b p-2">{p.lastName}</td>
-                  <td className="border-b p-2">{p.email}</td>
-                  <td className="border-b p-2">{p.phone}</td>
-                  <td className="border-b p-2">
-                    <div className="flex gap-2">
-                      <button
-                        className="px-2 py-1 rounded bg-amber-500 text-white hover:bg-amber-600"
-                        onClick={() => setEditing(p)}
-                      >
-                        Éditer
-                      </button>
-                      <button
-                        className="px-2 py-1 rounded bg-rose-600 text-white hover:bg-rose-700"
-                        onClick={() => handleDelete(p.id)}
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {items.length === 0 && !loading && (
+          <div className="overflow-auto border rounded">
+            <table className="w-full border-collapse min-w-[720px]">
+              <thead className="bg-gray-50">
                 <tr>
-                  <td colSpan={5} className="p-3 text-gray-600 text-center">
-                    Aucun patient
-                  </td>
+                  <th className="text-left border-b p-2">Prénom</th>
+                  <th className="text-left border-b p-2">Nom</th>
+                  <th className="text-left border-b p-2">Email</th>
+                  <th className="text-left border-b p-2">Téléphone</th>
+                  <th className="text-left border-b p-2 w-[220px]">Actions</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((p) => (
+                  <tr key={p.id} className="odd:bg-white even:bg-gray-50">
+                    <td className="border-b p-2">{p.firstName}</td>
+                    <td className="border-b p-2">{p.lastName}</td>
+                    <td className="border-b p-2">{p.email}</td>
+                    <td className="border-b p-2">{p.phone}</td>
+                    <td className="border-b p-2">
+                      <div className="flex gap-2">
+                        <button
+                          className="px-2 py-1 rounded bg-amber-500 text-white hover:bg-amber-600"
+                          onClick={() => setEditing(p)}
+                        >
+                          ✏️ Éditer
+                        </button>
+                        <button
+                          className="px-2 py-1 rounded bg-rose-600 text-white hover:bg-rose-700"
+                          onClick={() => handleDelete(p.id)}
+                        >
+                          🗑️ Supprimer
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {items.length === 0 && !loading && (
+                  <tr>
+                    <td colSpan={5} className="p-3 text-gray-600 text-center">
+                      Aucun patient
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
+          {/* Pagination */}
           <div className="flex items-center gap-2 mt-3">
             <button
               className="px-3 py-1.5 rounded border hover:bg-gray-50 disabled:opacity-50"
@@ -189,12 +277,14 @@ export default function PatientsPage() {
             >
               ◀ Précédent
             </button>
-            <span>
-              page {page} / {Math.max(1, Math.ceil(total / pageSize))} — {total} résultat(s)
+
+            <span className="text-sm text-gray-700">
+              page <b>{page}</b> / <b>{totalPages}</b> — {total} résultat(s)
             </span>
+
             <button
               className="px-3 py-1.5 rounded border hover:bg-gray-50 disabled:opacity-50"
-              disabled={page * pageSize >= total}
+              disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
             >
               Suivant ▶

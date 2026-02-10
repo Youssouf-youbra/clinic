@@ -1,222 +1,193 @@
-import { useEffect, useMemo, useState } from "react";
-import type { Staff } from "../types";
-import { getStaff, createStaff, updateStaff, deleteStaff } from "../api/staff";
-
-const roles = ["Medecin", "Infirmier", "Secretaire"];
+import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { getStaff, createStaff, updateStaff, deleteStaff, type Staff } from "../api/clients";
 
 export default function StaffPage() {
+  const [query, setQuery] = useState("");
   const [items, setItems] = useState<Staff[]>([]);
-  const [editing, setEditing] = useState<Staff | null>(null);
-  const [form, setForm] = useState<Omit<Staff, "id">>({
-    nom: "", prenom: "", role: "Medecin", email: "",
-  });
-  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Staff | null>(null);
+
+  // form
+  const [nom, setNom] = useState("");
+  const [prenom, setPrenom] = useState("");
+  const [role, setRole] = useState("");
+  const [email, setEmail] = useState("");
+
+  const load = () => {
     setLoading(true);
-    try { setItems(await getStaff()); } finally { setLoading(false); }
-  }
-  useEffect(() => { load(); }, []);
+    setError(null);
 
-  const filtered = useMemo(() => {
-    const s = search.trim().toLowerCase();
-    if (!s) return items;
-    return items.filter(x => (`${x.nom} ${x.prenom} ${x.role} ${x.email}`).toLowerCase().includes(s));
-  }, [items, search]);
+    getStaff()
+      .then((d) => {
+        const list = d ?? [];
+        const q = query.trim().toLowerCase();
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const payload = { ...form };
-    const saved = editing ? await updateStaff(editing.id, payload) : await createStaff(payload);
-    setItems(prev => editing ? prev.map(x => x.id === saved.id ? saved : x) : [saved, ...prev]);
+        const filtered = !q
+          ? list
+          : list.filter((s: Staff) =>
+              `${s.nom} ${s.prenom} ${s.role} ${s.email}`.toLowerCase().includes(q)
+            );
+
+        setItems(filtered);
+      })
+      .catch(() => setError("Impossible de charger le personnel."))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  const resetForm = () => {
+    setNom("");
+    setPrenom("");
+    setRole("");
+    setEmail("");
+  };
+
+  const startCreate = () => {
+    resetForm();
     setEditing(null);
-    setForm({ nom: "", prenom: "", role: "Medecin", email: "" });
-  }
+    setCreating(true);
+  };
 
-  async function onDelete(id: number) {
-    if (!confirm("Supprimer ce membre ?")) return;
-    await deleteStaff(id);
-    setItems(prev => prev.filter(x => x.id !== id));
-  }
-
-  function startEdit(s: Staff) {
+  const startEdit = (s: Staff) => {
+    setCreating(false);
     setEditing(s);
-    setForm({ nom: s.nom, prenom: s.prenom, role: s.role, email: s.email });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
+    setNom(s.nom);
+    setPrenom(s.prenom);
+    setRole(s.role);
+    setEmail(s.email);
+  };
+
+  const handleSave = async () => {
+    if (!nom || !prenom || !role || !email) {
+      toast.error("Tous les champs sont requis.");
+      return;
+    }
+
+    try {
+      if (editing) {
+        await updateStaff(editing.id, { id: editing.id, nom, prenom, role, email } as any);
+        toast.success("Personnel modifié ✅");
+        setEditing(null);
+      } else {
+        await createStaff({ nom, prenom, role, email } as any);
+        toast.success("Personnel ajouté ✅");
+        setCreating(false);
+      }
+      load();
+    } catch {
+      toast.error("Enregistrement impossible.");
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Supprimer ce membre du personnel ?")) return;
+    try {
+      await deleteStaff(id);
+      toast.success("Supprimé ✅");
+      setItems((prev) => prev.filter((s) => s.id !== id));
+    } catch {
+      toast.error("Suppression impossible.");
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-neutral-950">
-      {/* --- En-tête --- */}
-      <div className="border-b border-indigo-500/20 bg-gradient-to-r from-indigo-600 via-indigo-500 to-sky-500 text-white shadow-md">
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          <h1 className="text-3xl md:text-4xl font-semibold flex items-center gap-3">
-            👥 Gestion du Personnel
-          </h1>
-          <p className="text-white/90 mt-1">
-            Gérer les médecins, infirmiers et le personnel administratif.
-          </p>
-          <div className="mt-4 inline-flex items-center gap-2 bg-white/20 backdrop-blur px-3 py-1.5 rounded-lg">
-            <span className="text-sm">Total</span>
-            <span className="font-semibold">{items.length}</span>
-          </div>
-        </div>
-      </div>
+    <div>
+      <h2 className="text-xl font-semibold mb-4">Personnel</h2>
 
-      {/* --- Contenu principal --- */}
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Barre de recherche */}
-        <div className="flex flex-col md:flex-row md:items-center gap-3 mb-6">
-          <div className="relative flex-1">
-            <input
-              className="w-full bg-white dark:bg-neutral-900 border border-slate-300 dark:border-neutral-700 rounded-xl px-4 py-2.5 pl-11 outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="Rechercher un nom, rôle ou email…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <span className="absolute left-3 top-2.5 text-slate-400">🔍</span>
-          </div>
-          <button
-            onClick={load}
-            disabled={loading}
-            className="inline-flex items-center justify-center rounded-xl border border-slate-300 dark:border-neutral-700 px-4 py-2.5 bg-white dark:bg-neutral-900 hover:bg-slate-100 dark:hover:bg-neutral-800"
-          >
-            {loading ? "…" : "Rafraîchir"}
+      {!creating && !editing && (
+        <div className="page-actions">
+          <input
+            className="px-3 py-2 border rounded w-80"
+            placeholder="Rechercher (nom, rôle, email)"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+
+          <button className="px-3 py-2 rounded bg-blue-600 text-white" onClick={startCreate}>
+            + Nouveau membre
           </button>
         </div>
+      )}
 
-        {/* Grille : Formulaire + Table */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* --- Formulaire --- */}
-          <form onSubmit={onSubmit} className="card p-6">
-            <h2 className="text-lg font-semibold mb-4 text-indigo-600 dark:text-indigo-400">
-              {editing ? "Modifier un membre" : "Ajouter un membre"}
-            </h2>
+      {(creating || editing) && (
+        <div className="page-section">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold">
+              {editing ? "Modifier un membre" : "Nouveau membre"}
+            </h3>
+            <button
+              className="px-3 py-1.5 border rounded bg-white"
+              onClick={() => {
+                setCreating(false);
+                setEditing(null);
+              }}
+            >
+              Fermer
+            </button>
+          </div>
 
-            <div className="grid gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Nom</label>
-                <input
-                  className="w-full border border-gray-300 dark:border-neutral-700 rounded-lg px-3 py-2.5 bg-white dark:bg-neutral-900"
-                  placeholder="Entrez le nom…"
-                  value={form.nom}
-                  onChange={(e) => setForm({ ...form, nom: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Prénom</label>
-                <input
-                  className="w-full border border-gray-300 dark:border-neutral-700 rounded-lg px-3 py-2.5 bg-white dark:bg-neutral-900"
-                  placeholder="Entrez le prénom…"
-                  value={form.prenom}
-                  onChange={(e) => setForm({ ...form, prenom: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Rôle</label>
-                <select
-                  className="w-full border border-gray-300 dark:border-neutral-700 rounded-lg px-3 py-2.5 bg-white dark:bg-neutral-900"
-                  value={form.role}
-                  onChange={(e) => setForm({ ...form, role: e.target.value })}
-                >
-                  {roles.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
-                <input
-                  type="email"
-                  className="w-full border border-gray-300 dark:border-neutral-700 rounded-lg px-3 py-2.5 bg-white dark:bg-neutral-900"
-                  placeholder="ex. nom@domaine.com"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  required
-                />
-              </div>
-            </div>
+          <div className="flex gap-3 flex-wrap">
+            <input className="px-3 py-2 border rounded w-56" placeholder="Prénom" value={prenom} onChange={(e) => setPrenom(e.target.value)} />
+            <input className="px-3 py-2 border rounded w-56" placeholder="Nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+            <input className="px-3 py-2 border rounded w-56" placeholder="Rôle (Doctor/Staff…)" value={role} onChange={(e) => setRole(e.target.value)} />
+            <input className="px-3 py-2 border rounded w-80" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
 
-            <div className="flex gap-2 mt-5">
-              <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg">
-                {editing ? "Mettre à jour" : "Ajouter"}
-              </button>
-              {editing && (
-                <button
-                  type="button"
-                  onClick={() => { setEditing(null); setForm({ nom: "", prenom: "", role: "Medecin", email: "" }); }}
-                  className="border border-gray-300 dark:border-neutral-700 px-4 py-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-neutral-800"
-                >
-                  Annuler
-                </button>
-              )}
-            </div>
-          </form>
-
-          {/* --- Tableau --- */}
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold mb-4 text-indigo-600 dark:text-indigo-400">
-              Liste du personnel
-            </h2>
-
-            {err ? (
-              <div className="text-red-600 text-sm">{err}</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm divide-y divide-gray-200 dark:divide-neutral-800">
-                  <thead className="bg-slate-50 dark:bg-neutral-800">
-                    <tr className="text-left">
-                      <th className="px-3 py-2">Nom</th>
-                      <th className="px-3 py-2">Prénom</th>
-                      <th className="px-3 py-2">Rôle</th>
-                      <th className="px-3 py-2">Email</th>
-                      <th className="px-3 py-2 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
-                    {filtered.map((s) => (
-                      <tr key={s.id}>
-                        <td className="px-3 py-2">{s.nom}</td>
-                        <td className="px-3 py-2">{s.prenom}</td>
-                        <td className="px-3 py-2">
-                          <span className="inline-flex items-center rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-200 px-2 py-0.5 text-xs">
-                            {s.role}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">{s.email}</td>
-                        <td className="px-3 py-2 text-right space-x-2">
-                          <button
-                            onClick={() => startEdit(s)}
-                            className="px-3 py-1.5 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white"
-                          >
-                            Modifier
-                          </button>
-                          <button
-                            onClick={() => onDelete(s.id)}
-                            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white"
-                          >
-                            Supprimer
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {filtered.length === 0 && (
-                      <tr>
-                        <td className="px-3 py-6 text-center text-gray-500" colSpan={5}>
-                          Aucun résultat.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <button className="px-3 py-2 rounded bg-emerald-600 text-white" onClick={handleSave}>
+              Enregistrer
+            </button>
           </div>
         </div>
+      )}
+
+      {loading && <div>Chargement…</div>}
+      {error && <div className="text-red-600">{error}</div>}
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Prénom</th>
+              <th>Nom</th>
+              <th>Rôle</th>
+              <th>Email</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((s) => (
+              <tr key={s.id}>
+                <td>{s.prenom}</td>
+                <td>{s.nom}</td>
+                <td>{s.role}</td>
+                <td>{s.email}</td>
+                <td className="flex gap-2">
+                  <button className="px-2 py-1 bg-amber-500 text-white rounded" onClick={() => startEdit(s)}>
+                    Éditer
+                  </button>
+                  <button className="px-2 py-1 bg-rose-600 text-white rounded" onClick={() => handleDelete(s.id)}>
+                    Supprimer
+                  </button>
+                </td>
+              </tr>
+            ))}
+
+            {items.length === 0 && !loading && (
+              <tr>
+                <td colSpan={5} className="text-center py-4 text-gray-500">
+                  Aucun membre
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

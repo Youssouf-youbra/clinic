@@ -36,3 +36,125 @@ body {
   transform: translateY(-2px);
   transition: transform 0.2s ease;
 }
+body {
+  background-image: url('/src/assets/background.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  min-height: 100vh;
+}
+/* ================================
+   CONTENEUR GLOBAL POUR LES PAGES
+   ================================ */
+.page-wrapper {
+  max-width: 1150px;
+  margin: 32px auto;
+  padding: 24px 32px;
+  background: rgba(255, 255, 255, 0.90);
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+}
+
+/* ================================
+   SECTIONS INTERNES (FORMULAIRES)
+   ================================ */
+.page-section {
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+/* ================================
+   TABLEAUX LISIBLES
+   ================================ */
+.page-wrapper table {
+  width: 100%;
+  background-color: white;
+  border-collapse: collapse;
+}
+
+.page-wrapper th,
+.page-wrapper td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.page-wrapper th {
+  background-color: #f7f7f7;
+}
+/* ====== Force la lisibilité dans page-wrapper ====== */
+.page-wrapper {
+  width: min(1150px, calc(100% - 32px));
+}
+
+.page-wrapper h2 {
+  margin-bottom: 14px;
+}
+
+/* ====== Barre d’actions propre ====== */
+.page-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+/* ====== Table visible et scroll si trop large ====== */
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: white;
+}
+
+.table-wrap table {
+  min-width: 800px; /* évite que tout s’écrase */
+}
+
+.table-wrap th,
+.table-wrap td {
+  white-space: nowrap;
+}
+.page-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: white;
+}
+
+.table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+.table-wrap th,
+.table-wrap td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.table-wrap th {
+  background: #f7f7f7;
+  font-weight: 600;
+  text-align: left;
+}
+/* ✅ sécurité : tables restent tables (évite flex/inline) */
+table { display: table; }
+thead { display: table-header-group; }
+tbody { display: table-row-group; }
+tr { display: table-row; }
+th, td { display: table-cell; }

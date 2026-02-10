@@ -45,14 +45,21 @@ export default function PatientForm({ initial, onSubmit, onCancel }: Props) {
     return Object.keys(e).length === 0;
   };
 
-  const toDto = (f: Omit<Patient, "id">): Omit<Patient, "id"> => ({
-    firstName: f.firstName.trim(),
-    lastName: f.lastName.trim(),
-    birthDate: f.birthDate || "",
-    phone: f.phone?.trim() || "",
-    email: f.email?.trim() || "",
-    address: f.address?.trim() || "",
-  });
+  const toDto = (f: Omit<Patient, "id">): Omit<Patient, "id"> => {
+    const dto: Omit<Patient, "id"> = {
+      firstName: f.firstName.trim(),
+      lastName: f.lastName.trim(),
+      phone: f.phone?.trim() || "",
+      email: f.email?.trim() || "",
+      address: f.address?.trim() || "",
+    };
+
+    if (f.birthDate) {
+      dto.birthDate = f.birthDate;
+    }
+
+    return dto;
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
